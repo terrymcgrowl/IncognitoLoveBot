@@ -381,7 +381,7 @@ async def show_referral_link(message, context: ContextTypes.DEFAULT_TYPE):
     referral_code = db.get_referral_code(user_id)
     
     if referral_code:
-        referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
+        referral_link = f"https://t.me/IncognitoLoveBot?start={referral_code}"
         referrals_count = db.get_referral_stats(user_id)
         
         text = (
