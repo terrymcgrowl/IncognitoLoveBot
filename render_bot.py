@@ -53,12 +53,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username
     first_name = user.first_name
     
+    # Логируем для отладки
+    logger.info(f"🔥 Start command from user {user_id} with args: {context.args}")
+    
     # Проверяем реферальный код
     referred_by = None
     if context.args and len(context.args) > 0:
         referral_code = context.args[0]
+        logger.info(f"🔗 Referral code received: {referral_code}")
+        
+        # Ищем владельца кода в БД
         referred_by = db.get_user_by_referral(referral_code)
-        # Уведомление о реферале УДАЛЕНО
+        logger.info(f"👤 Referred by user: {referred_by}")
     
     # Регистрируем пользователя
     db.add_user(user_id, username, first_name, referred_by)
@@ -68,25 +74,30 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем информацию о владельце ссылки
         try:
             owner = await context.bot.get_chat(referred_by)
-            owner_username = owner.username or f"ID: {referred_by}"
+            owner_username = owner.username
             owner_name = owner.first_name or "пользователю"
+            
+            logger.info(f"✅ Owner found: {owner_username} ({referred_by})")
             
             # Сохраняем получателя в временные данные
             context.user_data['recipient'] = {
                 'to_user_id': referred_by,
-                'to_username': owner.username
+                'to_username': owner_username,
+                'is_referral': True  # Отмечаем, что это реферал
             }
             
             # Сразу запрашиваем текст валентинки
+            display_name = f"@{owner_username}" if owner_username else f"ID: {referred_by}"
             await update.message.reply_text(
-                f"💝 Вы перешли по ссылке от @{owner_username}!\n\n"
+                f"💝 Вы перешли по ссылке от {display_name}!\n\n"
                 f"Напишите текст валентинки для {owner_name} (до 500 символов):",
                 reply_markup=cancel_keyboard()
             )
             context.user_data['state'] = 'waiting_message'
             return  # Выходим, не показываем главное меню
+            
         except Exception as e:
-            logger.error(f"Ошибка при получении информации о владельце: {e}")
+            logger.error(f"❌ Ошибка при получении информации о владельце: {e}")
             # Если не получилось, показываем обычное меню
             pass
     
@@ -268,12 +279,21 @@ async def process_valentine_text(update: Update, context: ContextTypes.DEFAULT_T
         recipient = context.user_data['recipient']
         recipient_display = f"@{recipient['to_username']}" if recipient['to_username'] else f"ID: {recipient['to_user_id']}"
         
-        preview = (
-            f"📋 **Предпросмотр валентинки:**\n\n"
-            f"**Кому:** {recipient_display}\n"
-            f"**Текст:**\n{text}\n\n"
-            f"Отправляем? Сообщение будет полностью анонимным!"
-        )
+        # Если это реферал, показываем специальное сообщение
+        if recipient.get('is_referral'):
+            preview = (
+                f"📋 **Валентинка для пригласившего вас друга:**\n\n"
+                f"**Кому:** {recipient_display}\n"
+                f"**Текст:**\n{text}\n\n"
+                f"Отправляем? Сообщение будет полностью анонимным!"
+            )
+        else:
+            preview = (
+                f"📋 **Предпросмотр валентинки:**\n\n"
+                f"**Кому:** {recipient_display}\n"
+                f"**Текст:**\n{text}\n\n"
+                f"Отправляем? Сообщение будет полностью анонимным!"
+            )
         
         await update.message.reply_text(
             preview,
@@ -354,7 +374,7 @@ async def send_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data.clear()
 
-# Показать реферальную ссылку (ИСПРАВЛЕНО)
+# Показать реферальную ссылку
 async def show_referral_link(message, context: ContextTypes.DEFAULT_TYPE):
     """Показываем реферальную ссылку"""
     user_id = message.chat.id
