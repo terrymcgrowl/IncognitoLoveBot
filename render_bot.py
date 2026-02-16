@@ -89,8 +89,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Сразу запрашиваем текст валентинки
             display_name = f"@{owner_username}" if owner_username else f"ID: {referred_by}"
             await update.message.reply_text(
-                f"💝 Вы перешли по ссылке от {display_name}!\n\n"
-                f"Напишите текст валентинки для {owner_name} (до 500 символов):",
+                f"💝 Вы перешли по ссылке от {owner_name}!\n\n"
+                f"Напишите текст валентинки (до 500 символов):",
                 reply_markup=cancel_keyboard()
             )
             context.user_data['state'] = 'waiting_message'
