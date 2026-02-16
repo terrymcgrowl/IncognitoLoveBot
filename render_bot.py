@@ -58,18 +58,39 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and len(context.args) > 0:
         referral_code = context.args[0]
         referred_by = db.get_user_by_referral(referral_code)
-        if referred_by:
-            try:
-                await context.bot.send_message(
-                    chat_id=referred_by,
-                    text=f"🎉 По вашей реферальной ссылке зарегистрировался новый пользователь {first_name}!"
-                )
-            except Exception as e:
-                logger.error(f"Ошибка при уведомлении реферера: {e}")
+        # Уведомление о реферале УДАЛЕНО
     
     # Регистрируем пользователя
     db.add_user(user_id, username, first_name, referred_by)
     
+    # ЕСЛИ ПЕРЕШЛИ ПО РЕФЕРАЛЬНОЙ ССЫЛКЕ - СРАЗУ ПРЕДЛОЖИТЬ НАПИСАТЬ
+    if referred_by:
+        # Получаем информацию о владельце ссылки
+        try:
+            owner = await context.bot.get_chat(referred_by)
+            owner_username = owner.username or f"ID: {referred_by}"
+            owner_name = owner.first_name or "пользователю"
+            
+            # Сохраняем получателя в временные данные
+            context.user_data['recipient'] = {
+                'to_user_id': referred_by,
+                'to_username': owner.username
+            }
+            
+            # Сразу запрашиваем текст валентинки
+            await update.message.reply_text(
+                f"💝 Вы перешли по ссылке от @{owner_username}!\n\n"
+                f"Напишите текст валентинки для {owner_name} (до 500 символов):",
+                reply_markup=cancel_keyboard()
+            )
+            context.user_data['state'] = 'waiting_message'
+            return  # Выходим, не показываем главное меню
+        except Exception as e:
+            logger.error(f"Ошибка при получении информации о владельце: {e}")
+            # Если не получилось, показываем обычное меню
+            pass
+    
+    # Обычное приветствие (если не реферал)
     welcome_text = (
         f"❤️ Привет, {first_name}!\n\n"
         "Я бот для анонимных валентинок. Ты можешь:\n"
@@ -333,14 +354,16 @@ async def send_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data.clear()
 
-# Показать реферальную ссылку
+# Показать реферальную ссылку (ИСПРАВЛЕНО)
 async def show_referral_link(message, context: ContextTypes.DEFAULT_TYPE):
     """Показываем реферальную ссылку"""
     user_id = message.chat.id
     referral_code = db.get_referral_code(user_id)
     
     if referral_code:
-        referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
+        # Убираем @ из BOT_USERNAME если он там есть
+        bot_username = BOT_USERNAME.replace('@', '')
+        referral_link = f"https://t.me/{bot_username}?start={referral_code}"
         referrals_count = db.get_referral_stats(user_id)
         
         text = (
@@ -348,7 +371,7 @@ async def show_referral_link(message, context: ContextTypes.DEFAULT_TYPE):
             f"`{referral_link}`\n\n"
             f"📊 **Приглашено друзей: {referrals_count}**\n\n"
             "✨ Размести эту ссылку на своей странице или отправь друзьям!\n"
-            "За каждого приглашенного друга ты получишь уведомление."
+            "По этой ссылке друзья смогут сразу отправить тебе анонимную валентинку!"
         )
         
         await context.bot.send_message(
@@ -425,7 +448,7 @@ async def show_help(message):
         "🔗 **Реферальная система**\n"
         "• Получи свою уникальную ссылку в разделе 'Реферальная ссылка'\n"
         "• Размести её в соцсетях или отправь друзьям\n"
-        "• Когда друг перейдет по ссылке, ты получишь уведомление\n\n"
+        "• Когда друг перейдет по ссылке, он сможет сразу отправить тебе валентинку\n\n"
         "📊 **Статистика**\n"
         "• Отслеживай количество отправленных и полученных валентинок\n"
         "• Смотри, сколько друзей пригласил\n\n"
@@ -440,9 +463,11 @@ async def show_help(message):
 # Главная функция
 async def main():
     """Главная функция для запуска бота на Render"""
+    logger.info("🔧 Начало инициализации бота")
     
     # Создаем приложение Telegram бота
     application = Application.builder().token(BOT_TOKEN).build()
+    logger.info("✅ Application создан")
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", start_command))
@@ -455,10 +480,17 @@ async def main():
         logger.error("❌ RENDER_EXTERNAL_URL не найден!")
         return
     
-    # Устанавливаем вебхук
+    # Сбрасываем и устанавливаем вебхук
     webhook_url = f"{render_url}/telegram"
+    await application.bot.delete_webhook(drop_pending_updates=True)
+    logger.info("🔄 Старый вебхук удален")
+    
     await application.bot.set_webhook(url=webhook_url)
     logger.info(f"✅ Вебхук установлен на {webhook_url}")
+    
+    # Проверка вебхука
+    webhook_info = await application.bot.get_webhook_info()
+    logger.info(f"📊 Информация о вебхуке: {webhook_info}")
     
     # Создаем Starlette приложение для веб-сервера
     async def telegram_webhook(request: Request) -> Response:
@@ -502,6 +534,7 @@ async def main():
     # Запускаем бота и сервер
     async with application:
         await application.start()
+        logger.info("🚀 Бот запущен и готов к работе!")
         await server.serve()
         await application.stop()
 
