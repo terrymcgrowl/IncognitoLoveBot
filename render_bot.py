@@ -381,9 +381,7 @@ async def show_referral_link(message, context: ContextTypes.DEFAULT_TYPE):
     referral_code = db.get_referral_code(user_id)
     
     if referral_code:
-        # Убираем @ из BOT_USERNAME если он там есть
-        bot_username = BOT_USERNAME.replace('@', '')
-        referral_link = f"https://t.me/{bot_username}?start={referral_code}"
+        referral_link = f"https://t.me/{BOT_USERNAME}?start={referral_code}"
         referrals_count = db.get_referral_stats(user_id)
         
         text = (
