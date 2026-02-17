@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Render
-        run: curl -s -o /dev/null https://valentine-bot.onrender.com/health
+        run: curl -s -o /dev/null https://IncognitoLoveBot.onrender.com/health
